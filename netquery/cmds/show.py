@@ -20,15 +20,17 @@ class Format(str, Enum):
 @app.callback()
 def callback(
     ctx: Context,
-    format: Annotated[Format, Option("--format", "-f")] = Format.PRETTY,
+    format: Annotated[
+        Format, Option("--format", "-f", help="Allows changing the output format.")
+    ] = Format.PRETTY,
     # TODO: Finish implementing
-    filename: Annotated[str | None, Option("--filename", "-F")] = None,
+    # filename: Annotated[str | None, Option("--filename", "-F")] = None,
 ):
     ctx.obj["format"] = format
-    ctx.obj["filename"] = filename
+    # ctx.obj["filename"] = filename
 
 
-@app.command("groups | grp")
+@app.command("groups | grp", help="Shows the configured machine groups.")
 def view_groups(
     ctx: Context,
 ):
@@ -41,8 +43,8 @@ def view_groups(
     )
 
 
-@app.command("machines | mchs")
-def view_group_hosts(
+@app.command("machines | mchs", help="Shows the machines from a group.")
+def view_group_machines(
     ctx: Context,
     group: Annotated[
         str, Argument(help="Group label of the group whose machines to list.")

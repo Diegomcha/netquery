@@ -14,6 +14,4 @@ Creación del directorio `app` en el home del usuario.
 Dicho entorno esta en el directorio `app/.venv`. De esta forma los paquetes se instalan de forma local al proyecto.
 
 ### Instalación de paquetes
-Estos paquetes se han instalado en el entorno virtual local.
-- `netmiko` y deps.
-- `typer` y deps (si existen).
+Los paquetes instalados en el entorno virtual `.venv` están especificados en `pyproject.toml` bajo `project.dependencies`.

@@ -34,6 +34,7 @@ def callback(
             "-g",
             parser=lambda str: str.split(","),
             metavar="GROUP1,GROUP2,...",
+            help="Allows specifying which groups of machines should be queried. By default all groups.",
         ),
     ] = None,
 ):
@@ -45,20 +46,34 @@ def callback(
     ctx.obj["groups"] = groups
 
 
-@app.command("filtered | ftr")
+@app.command(
+    "filtered | ftr",
+    help="Executes, filters and aggregates the output of a command run on several machines.",
+)
 def running(
     ctx: Context,
-    cmd: Annotated[str, Argument()],
-    term: Annotated[str, Argument()],
-    mode: Annotated[Mode, Option()] = Mode.INCLUDE,
+    cmd: Annotated[
+        str, Argument(help="Specifies which command to use for executing the query.")
+    ],
+    term: Annotated[
+        str, Argument(help="Specifies which term or regexp to search for.")
+    ],
+    mode: Annotated[
+        Mode, Option(help="Specifies which mode of searching is employed.")
+    ] = Mode.INCLUDE,
 ):
     command(ctx, f"{cmd} | {mode} {term}")
 
 
-@app.command("command | cmd")
+@app.command(
+    "command | cmd",
+    help="Executes aggregates the output of a command run on several machines.",
+)
 def command(
     ctx: Context,
-    cmd: Annotated[str, Argument()],
+    cmd: Annotated[
+        str, Argument(help="Specifies which command to use for executing the query.")
+    ],
 ):
     results = []
     for group in ctx.obj["groups"] or ctx.obj["machines"].keys():
