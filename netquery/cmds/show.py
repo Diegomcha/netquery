@@ -5,9 +5,7 @@ from click import UsageError
 from tabulate import tabulate
 from typer import Argument, Context, Option, Typer, echo, style
 
-from netquery.utils import AliasGroup
-
-app = Typer(cls=AliasGroup, no_args_is_help=True)
+show_app = Typer(no_args_is_help=True)
 
 
 class Format(str, Enum):
@@ -17,7 +15,7 @@ class Format(str, Enum):
     # HTML = "html"
 
 
-@app.callback()
+@show_app.callback()
 def callback(
     ctx: Context,
     format: Annotated[
@@ -30,7 +28,7 @@ def callback(
     # ctx.obj["filename"] = filename
 
 
-@app.command("groups | grp", help="Shows the configured machine groups.")
+@show_app.command("groups", help="Shows the configured machine groups.")
 def view_groups(
     ctx: Context,
 ):
@@ -43,7 +41,7 @@ def view_groups(
     )
 
 
-@app.command("machines | mchs", help="Shows the machines from a group.")
+@show_app.command("machines", help="Shows the machines from a group.")
 def view_group_machines(
     ctx: Context,
     group: Annotated[

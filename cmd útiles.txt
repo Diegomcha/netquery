@@ -1,0 +1,14 @@
+comandos utiles cisco ios
+ 
+show run <------------------------------------------- muestra running configuration
+/texto <--------------------------------------------- muestra a partir de la primera busqueda (para quitar el banner)
++texto <--------------------------------------------- solo coincidencias
+show term lenght 0 <--------------------------------- desactiva el more
+show run linenum <----------------------------------- linea asociada a cada parametro de la configuración (no relevante)
+show run | i texto|text2|texto3 <-------------------- varias búsquedas
+show run | section bgp <----------------------------- muestra la sección de configuración pedida
+more flash:/text <----------------------------------- leer contenido de un fichero
+show run | i ^texto <-------------------------------- muestra contenido que comienza por texto
+show run | i texto$ <-------------------------------- muestra contenido que acaba por texto
+show run | i \. <------------------------------------ muestra contenido que contenga . por ejemplo para buscar IPs
+show run all <--------------------------------------- muestra los defaults (no será útil...)
