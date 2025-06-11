@@ -1,8 +1,8 @@
 from json import JSONDecodeError, load
 from typing import Any
 
-from click import FileError, UsageError
-from typer import FileText, echo, open_file
+from click import UsageError
+from typer import open_file
 
 DEFAULT_DEVICE_TYPE = "cisco_ios"
 
