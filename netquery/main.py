@@ -18,7 +18,7 @@ from rich.progress import (
     TextColumn,
 )
 from tabulate import tabulate
-from typer import Context, Option, Typer, echo, prompt, style
+from typer import Option, Typer, echo, prompt, style
 
 from netquery.utils import (
     DEFAULT_DEVICE_TYPE,
