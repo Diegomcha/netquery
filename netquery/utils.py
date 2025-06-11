@@ -2,7 +2,7 @@ from json import JSONDecodeError, load
 from typing import Any
 
 from click import UsageError
-from typer import open_file
+from typer import Context, open_file
 
 DEFAULT_DEVICE_TYPE = "cisco_ios"
 
@@ -40,3 +40,20 @@ def parse_machines(filename: str) -> Machines:
                 }
     except (JSONDecodeError, FileNotFoundError) as e:
         raise UsageError(f"Invalid machines file '{filename}'.\n{e}")
+
+
+def validate_groups(ctx: Context, groups: list[str]) -> list[str]:
+    """Validates the specified groups agains the machines file's groups.
+
+    Args:
+        ctx (Context): Context of the command.
+        groups (list[str]): List of groups specified in the command.
+
+    Raises:
+        UsageError: Whenever a user-specified group does not exist in the machines file's groups.
+    """
+    if groups and not all(group in ctx.params["machines"] for group in groups):
+        raise UsageError(
+            f"Some specified group is not present in the machines file.\nAvailable groups: {list(ctx.params["machines"].keys())}"
+        )
+    return groups or ctx.params["machines"].keys()
