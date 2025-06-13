@@ -1,15 +1,12 @@
-import os
 from datetime import datetime, timezone
 from enum import Enum
-from io import BytesIO, StringIO
-from json import dump, dumps
+from io import BytesIO
+from json import dumps
 from typing import Annotated, Any
 
-from click import UsageError
 from netmiko import (
     ConnectHandler,
     NetmikoAuthenticationException,
-    NetmikoBaseException,
     NetmikoTimeoutException,
     SSHDetect,
 )
@@ -26,26 +23,11 @@ from rich.traceback import install
 from tabulate import tabulate
 from typer import Option, Typer, echo, prompt, style
 
-from netquery.utils import Machines, parse_machines, validate_groups
+from netquery.utils import Machines, get_hostname, parse_machines, validate_groups
 
 install(show_locals=False)
 
 app = Typer()
-
-
-class Mode(str, Enum):
-    I = "i"
-    INCLUDE = "include"
-    E = "e"
-    EXCLUDE = "exclude"
-    B = "b"
-    BEGIN = "begin"
-    SECTION = "section"
-    GREP = "grep"
-    DISABLE = "disable"
-
-    def __str__(self) -> str:
-        return self.value
 
 
 # Command that does the querying
@@ -79,22 +61,6 @@ def query(
     cmd: Annotated[
         str,
         Option(prompt="Command", help="Command that will be executed. Can be ommited"),
-    ] = "",
-    mode: Annotated[
-        Mode,
-        Option(
-            prompt="Searching mode",
-            prompt_required=True,
-            help="Filtering mode that will be applied. 'disable' means filtering is disabled.",
-        ),
-    ] = Mode.DISABLE,
-    term: Annotated[
-        str,
-        Option(
-            prompt="Searching term",
-            prompt_required=True,
-            help="Term to use to filter the results. When mode is 'disable', this option serves no purpose.",
-        ),
     ] = "",
     device_type: Annotated[
         str,
@@ -181,11 +147,7 @@ def query(
                             with ConnectHandler(**device) as con:
                                 if len(cmd) > 0:
                                     result = con.send_command(
-                                        (
-                                            f"{cmd} | {mode.value} {term}"
-                                            if mode is not Mode.DISABLE
-                                            else cmd
-                                        ),
+                                        cmd,
                                         use_textfsm=len(textfsm_template) > 0,
                                         textfsm_template=textfsm_template,
                                         raise_parsing_error=True,
@@ -218,6 +180,7 @@ def query(
                         [
                             group,
                             label,
+                            get_hostname(device["host"]),
                             device["host"],
                             device["device_type"],
                             result,
@@ -227,9 +190,10 @@ def query(
 
     # Sort table of results
     df = DataFrame(
-        results, columns=["Group", "Label", "IP", "Device Type", "Result", "Log"]
-    ).sort_values(["Result", "Group", "Label", "IP", "Device Type"])[
-        ["Result", "Group", "Label", "IP", "Device Type", "Log"]
+        results,
+        columns=["Group", "Label", "Hostname", "IP", "Device Type", "Result", "Log"],
+    ).sort_values(["Result", "Group", "Label", "Hostname", "IP", "Device Type"])[
+        ["Result", "Group", "Label", "Hostname", "IP", "Device Type", "Log"]
     ]
 
     # Clean table for display
@@ -262,7 +226,7 @@ def query(
     # Handle writting output
     filename: str = output or prompt(
         "Output (.html .csv .json .txt False)",
-        default=f"{cmd.replace(" ", "_") if len(cmd)  > 0 else "accessible"}{f"_{mode.value}_{term.replace(" ", "_")}" if mode.value != Mode.DISABLE else ""}__{datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")}.csv",
+        default=f"{cmd.replace(" ", "_") if len(cmd)  > 0 else "accessible"}__{datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")}.csv",
         type=str,
     )
     if filename != "False":
@@ -294,7 +258,5 @@ def query(
             username,
             password,
             prompt("Command", cmd),
-            prompt("Mode", mode.value, type=Mode),
-            prompt("Term", term),
             groups,
         )

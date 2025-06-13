@@ -1,5 +1,6 @@
 from io import BytesIO
 from json import JSONDecodeError, load
+from socket import getnameinfo
 from typing import Any
 
 from click import UsageError
@@ -56,6 +57,19 @@ def validate_groups(ctx: Context, groups: list[str]) -> list[str]:
             f"Some specified group is not present in the machines file.\nAvailable groups: {list(ctx.params["machines"].keys())}"
         )
     return groups or ctx.params["machines"].keys()
+
+
+def get_hostname(ip: str) -> str:
+    """Obtains the hostname of an ip using a DNS reverse lookup.
+
+    Args:
+        ip (str): IP whose hostname to obtain.
+
+    Returns:
+        str: Hostname if it was available, otherwise the IP.
+    """
+    hostname, _ = getnameinfo((ip, 0), 0)
+    return hostname
 
 
 class InMemoryLog(BytesIO):
