@@ -1,10 +1,9 @@
+from io import BytesIO
 from json import JSONDecodeError, load
 from typing import Any
 
 from click import UsageError
 from typer import Context, open_file
-
-DEFAULT_DEVICE_TYPE = "cisco_ios"
 
 type Machines = dict[str, dict[str, dict[str, Any]]]
 
@@ -57,3 +56,11 @@ def validate_groups(ctx: Context, groups: list[str]) -> list[str]:
             f"Some specified group is not present in the machines file.\nAvailable groups: {list(ctx.params["machines"].keys())}"
         )
     return groups or ctx.params["machines"].keys()
+
+
+class InMemoryLog(BytesIO):
+    def write(self, b):
+        # Ensure bytes are written
+        if isinstance(b, str):
+            b = b.encode("utf-8")
+        return super().write(b)

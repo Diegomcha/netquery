@@ -1,12 +1,17 @@
+import os
 from datetime import datetime, timezone
 from enum import Enum
+from io import BytesIO, StringIO
+from json import dump, dumps
 from typing import Annotated, Any
 
 from click import UsageError
 from netmiko import (
     ConnectHandler,
     NetmikoAuthenticationException,
+    NetmikoBaseException,
     NetmikoTimeoutException,
+    SSHDetect,
 )
 from pandas import DataFrame
 from rich.progress import (
@@ -17,15 +22,13 @@ from rich.progress import (
     TaskProgressColumn,
     TextColumn,
 )
+from rich.traceback import install
 from tabulate import tabulate
 from typer import Option, Typer, echo, prompt, style
 
-from netquery.utils import (
-    DEFAULT_DEVICE_TYPE,
-    Machines,
-    parse_machines,
-    validate_groups,
-)
+from netquery.utils import Machines, parse_machines, validate_groups
+
+install(show_locals=False)
 
 app = Typer()
 
@@ -75,8 +78,8 @@ def query(
     ],
     cmd: Annotated[
         str,
-        Option(prompt="Command", help="Command that will be executed."),
-    ],
+        Option(prompt="Command", help="Command that will be executed. Can be ommited"),
+    ] = "",
     mode: Annotated[
         Mode,
         Option(
@@ -91,6 +94,22 @@ def query(
             prompt="Searching term",
             prompt_required=True,
             help="Term to use to filter the results. When mode is 'disable', this option serves no purpose.",
+        ),
+    ] = "",
+    device_type: Annotated[
+        str,
+        Option(
+            metavar="DEVICE_TYPE",
+            help="Default device type to use for the devices with no explicit 'device_type'. Avoid using default 'autodetect' as it is too slow.",
+            prompt="Default device type",
+        ),
+    ] = "autodetect",
+    textfsm_template: Annotated[
+        str,
+        Option(
+            metavar="FILENAME",
+            help="TextFSM template to use for parsing the output. Only works when 'cmd' is set.",
+            prompt="TextFSM template",
         ),
     ] = "",
     groups: Annotated[
@@ -138,47 +157,80 @@ def query(
             for label, machine in prog.track(
                 machines[group].items(), description=f"· {group}"
             ):
-                try:
-                    # continue
-                    with ConnectHandler(
+                with BytesIO() as log:
+                    device = {
                         **{
                             "username": username,
                             "password": password,
-                            "device_type": DEFAULT_DEVICE_TYPE,
+                            "device_type": device_type,
+                            "session_log": log,
                         },
                         **machine,
-                    ) as con:
-                        results.append(
-                            [
-                                group,
-                                label,
-                                machine["host"],
-                                con.send_command(
-                                    f"{cmd} | {mode.value} {term}"
-                                    if mode is not Mode.DISABLE
-                                    else cmd
-                                ),
-                            ]
+                    }
+                    try:
+                        if device["device_type"] == "autodetect":
+                            device["device_type"] = SSHDetect(**device).autodetect()
+
+                        if not device["device_type"]:
+                            result = "❓ Unknown"
+                            prog.console.print(
+                                f"Unknown device type '{label} ({machine['host']})'!",
+                                style="bold red",
+                            )
+                        else:
+                            with ConnectHandler(**device) as con:
+                                if len(cmd) > 0:
+                                    result = con.send_command(
+                                        (
+                                            f"{cmd} | {mode.value} {term}"
+                                            if mode is not Mode.DISABLE
+                                            else cmd
+                                        ),
+                                        use_textfsm=len(textfsm_template) > 0,
+                                        textfsm_template=textfsm_template,
+                                        raise_parsing_error=True,
+                                    )
+                                    if isinstance(result, (list, dict)):
+                                        result = dumps(result)
+                                else:
+                                    result = "✅ Accessible"
+
+                    except NetmikoAuthenticationException:
+                        result = "⛔ Unauthorized"
+                        prog.console.print(
+                            f"Authentication failure at '{label} ({machine['host']})'!",
+                            style="bold red",
                         )
-                except NetmikoAuthenticationException as e:
-                    prog.console.print(
-                        f"Authentication failure at '{label} ({machine['host']})'!",
-                        style="bold red",
-                    )
-                except NetmikoTimeoutException as e:
-                    prog.console.print(
-                        f"Failed to connect to '{label} ({machine['host']})'!",
-                        style="bold red",
-                    )
-                except Exception as e:
-                    raise UsageError(
-                        f"Error running command in machine '{label} ({machine['host']})':\n{e}"
+                    except NetmikoTimeoutException:
+                        result = "⌛ Timeout"
+                        prog.console.print(
+                            f"Failed to connect to '{label} ({machine['host']})'!",
+                            style="bold red",
+                        )
+                    except Exception as e:
+                        result = "🔥 Exception"
+                        prog.console.print(
+                            f"Unknown error from '{label} ({machine['host']})'!\n\n{e}",
+                            style="bold red",
+                        )
+
+                    results.append(
+                        [
+                            group,
+                            label,
+                            device["host"],
+                            device["device_type"],
+                            result,
+                            log.getvalue().decode(),
+                        ]
                     )
 
     # Sort table of results
-    df = DataFrame(results, columns=["Group", "Label", "IP", "Result"]).sort_values(
-        ["Result", "Group", "Label", "IP"]
-    )[["Result", "Group", "Label", "IP"]]
+    df = DataFrame(
+        results, columns=["Group", "Label", "IP", "Device Type", "Result", "Log"]
+    ).sort_values(["Result", "Group", "Label", "IP", "Device Type"])[
+        ["Result", "Group", "Label", "IP", "Device Type", "Log"]
+    ]
 
     # Clean table for display
     df_clean = df.copy()
@@ -186,6 +238,7 @@ def query(
     df_clean["Group"] = df.groupby("Result")["Group"].transform(
         lambda x: x.mask(x.duplicated(), '"')
     )
+    df_clean = df_clean.drop("Log", axis="columns")
     if len(groups) == 1:
         df_clean = df_clean.drop("Group", axis="columns")
 
@@ -209,7 +262,7 @@ def query(
     # Handle writting output
     filename: str = output or prompt(
         "Output (.html .csv .json .txt False)",
-        default=f"{cmd.replace(" ", "_")}{f"_{mode.value}_{term.replace(" ", "_")}" if mode.value is not Mode.DISABLE else ""}__{datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")}.csv",
+        default=f"{cmd.replace(" ", "_") if len(cmd)  > 0 else "accessible"}{f"_{mode.value}_{term.replace(" ", "_")}" if mode.value != Mode.DISABLE else ""}__{datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")}.csv",
         type=str,
     )
     if filename != "False":
