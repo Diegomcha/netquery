@@ -1,5 +1,5 @@
+import re
 from datetime import datetime, timezone
-from enum import Enum
 from io import BytesIO
 from json import dumps
 from typing import Annotated, Any
@@ -19,15 +19,19 @@ from rich.progress import (
     TaskProgressColumn,
     TextColumn,
 )
-from rich.traceback import install
 from tabulate import tabulate
-from typer import Option, Typer, echo, prompt, style
+from typer import Option, Typer, prompt
 
-from netquery.utils import Machines, get_hostname, parse_machines, validate_groups
+from netquery.utils import (
+    Machines,
+    console,
+    get_hostname,
+    parse_machines,
+    safe_splitter,
+    validate_groups,
+)
 
-install(show_locals=False)
-
-app = Typer()
+app = Typer(pretty_exceptions_show_locals=False)
 
 
 # Command that does the querying
@@ -36,77 +40,106 @@ def query(
     machines: Annotated[
         Machines,
         Option(
-            prompt="Machines file (.txt or .json)",
-            help="File where the machines are specified. It may be *.json or *.txt.",
             parser=parse_machines,
             metavar="FILENAME",
+            help="Path to the file containing machine definitions (.json or .txt).",
+            prompt="Machines file (.txt or .json)",
         ),
     ],
     username: Annotated[
         str,
         Option(
+            help="Username for SSH authentication.",
             prompt="Username",
             hide_input=True,
-            help="Username used to authenticate into the machines.",
         ),
     ],
     password: Annotated[
         str,
         Option(
+            help="Password for SSH authentication.",
             prompt="Password",
             hide_input=True,
-            help="Password used to authenticate into the machines.",
         ),
     ],
-    cmd: Annotated[
-        str,
-        Option(prompt="Command", help="Command that will be executed. Can be ommited"),
-    ] = "",
     device_type: Annotated[
         str,
         Option(
             metavar="DEVICE_TYPE",
-            help="Default device type to use for the devices with no explicit 'device_type'. Avoid using default 'autodetect' as it is too slow.",
+            help="Default device type for machines without an explicit 'device_type'. Avoid 'autodetect' for large sets due to performance.",
             prompt="Default device type",
         ),
     ] = "autodetect",
+    groups: Annotated[
+        Any,
+        Option(
+            parser=safe_splitter(","),
+            callback=validate_groups,
+            metavar="GROUP1,GROUP2,...",
+            help="Comma-separated list of machine groups to include. If omitted, all groups are used.",
+            prompt="Groups (comma-separated)",
+        ),
+    ] = "all",
+    cmds: Annotated[
+        Any,
+        Option(
+            parser=safe_splitter(","),
+            metavar="CMD1, CMD2,...",
+            help="Comma-separated list of commands to run on each device. Leave empty to only check SSH accessibility.",
+            show_default="none",
+            prompt="Commands (comma-separated)",
+        ),
+    ] = "",
+    prompt_patterns: Annotated[
+        Any,
+        Option(
+            parser=safe_splitter(","),
+            metavar="PATTERN1,PATTERN2,...",
+            help="Comma-separated list of expected prompt patterns, one per command. These patterns help match the device's prompt during execution. If left blank, the default prompt for the detected device type will be used.",
+            show_default="device's default",
+            prompt="Prompt patterns (comma-separated)",
+        ),
+    ] = "default",
     textfsm_template: Annotated[
         str,
         Option(
             metavar="FILENAME",
-            help="TextFSM template to use for parsing the output. Only works when 'cmd' is set.",
+            help="Path to a TextFSM template for parsing command output. Only used if 'cmds' is set.",
+            show_default="disabled",
             prompt="TextFSM template",
         ),
     ] = "",
-    groups: Annotated[
-        Any,
+    output_regex: Annotated[
+        str,
         Option(
-            parser=lambda groups: groups.split(","),
-            callback=validate_groups,
-            metavar="GROUP1,GROUP2,...",
-            help="Allows specifying which groups of machines should be queried.",
-            show_default="All groups",
+            metavar="REGEX",
+            help="Regex pattern to filter command output locally. Applied after TextFSM parsing, if used.",
+            show_default="disabled",
+            prompt="Output regex filter",
         ),
-    ] = None,
+    ] = "",
     multiple: Annotated[
-        bool, Option(help="Whether to allow multiple queries interactively.")
+        bool,
+        Option(
+            help="Enable interactive mode to run multiple queries in a single session."
+        ),
     ] = True,
     output: Annotated[
         str | None,
         Option(
             metavar="[FILENAME.html|FILENAME.json|FILENAME.csv|FILENAME.txt|False]",
             show_default="dynamic",
-            help="Filename where the results of the query will be outputted or 'False' to disable.",
+            help="Output filename for saving results. Use 'False' to disable saving. Format inferred from extension.",
         ),
     ] = None,
 ):
     """
-    Query a set of machines using SSH and run a specified command, optionally filtering results by search term and mode.
+    Query a set of network devices over SSH and optionally run commands.
 
-    - You can specify machines via a .txt or .json file, authenticate with a username and password, and run a command across selected machine groups.
-
-    - Results are displayed in a formatted table and can be saved in various formats (CSV, HTML, JSON, TXT).
-
+    - Devices are defined in a .txt or .json file.
+    - Authenticate using a username and password.
+    - Run one or more commands across selected device groups.
+    - Results are shown in a formatted table and can be exported (CSV, HTML, JSON, TXT).
     - Supports repeated queries in a single session.
     """
 
@@ -118,6 +151,7 @@ def query(
         BarColumn(),
         MofNCompleteColumn(),
         TaskProgressColumn(),
+        transient=True,
     ) as prog:
         for group in prog.track(groups, description="Querying..."):
             for label, machine in prog.track(
@@ -133,54 +167,90 @@ def query(
                         },
                         **machine,
                     }
+                    hostname = get_hostname(device["host"])
+
                     try:
                         if device["device_type"] == "autodetect":
                             device["device_type"] = SSHDetect(**device).autodetect()
 
                         if not device["device_type"]:
                             result = "❓ Unknown"
-                            prog.console.print(
-                                f"Unknown device type '{label} ({machine['host']})'!",
+                            prog.console.log(
+                                f"❓ Unknown device type '{label} ({hostname})'!",
                                 style="bold red",
                             )
                         else:
                             with ConnectHandler(**device) as con:
-                                if len(cmd) > 0:
-                                    result = con.send_command(
-                                        cmd,
-                                        use_textfsm=len(textfsm_template) > 0,
-                                        textfsm_template=textfsm_template,
-                                        raise_parsing_error=True,
-                                    )
+                                # If no commands, test it is accessible
+                                if len(cmds) == 1 and len(cmds[0]) == 0:
+                                    result = "✅ Accessible"
+                                else:
+                                    if len(cmds) == 1:
+                                        result = con.send_command(
+                                            cmds[0],
+                                            expect_string=prompt_patterns[0],
+                                            use_textfsm=len(textfsm_template) > 0,
+                                            textfsm_template=textfsm_template,
+                                            raise_parsing_error=True,
+                                        )
+                                    else:
+                                        result = con.send_multiline(
+                                            [
+                                                [cmd, pattern]
+                                                for cmd, pattern in zip(
+                                                    cmds, prompt_patterns
+                                                )
+                                            ],
+                                            use_textfsm=len(textfsm_template) > 0,
+                                            textfsm_template=textfsm_template,
+                                            raise_parsing_error=True,
+                                        )
+
+                                    # Parse JSON result if parsing template was used
                                     if isinstance(result, (list, dict)):
                                         result = dumps(result)
-                                else:
-                                    result = "✅ Accessible"
+
+                                    # Filter output
+                                    if len(output_regex) > 0:
+                                        match = re.search(output_regex, result)
+                                        if match:
+                                            result = match.group(1)
+                                        else:
+                                            prog.console.log(
+                                                f"🔍 '{output_regex}' found no matches for '{label} ({hostname})'!",
+                                                style="bold yellow",
+                                            )
+
+                                prog.console.log(
+                                    f"✅ Task complete for device '{label} ({hostname})'",
+                                    style="bold green",
+                                )
 
                     except NetmikoAuthenticationException:
                         result = "⛔ Unauthorized"
-                        prog.console.print(
-                            f"Authentication failure at '{label} ({machine['host']})'!",
+                        prog.console.log(
+                            f"⛔ Authentication failure at '{label} ({hostname})'!",
                             style="bold red",
                         )
                     except NetmikoTimeoutException:
                         result = "⌛ Timeout"
-                        prog.console.print(
-                            f"Failed to connect to '{label} ({machine['host']})'!",
+                        prog.console.log(
+                            f"⌛ Failed to connect to '{label} ({hostname})'!",
                             style="bold red",
                         )
-                    except Exception as e:
+                    except Exception:
                         result = "🔥 Exception"
-                        prog.console.print(
-                            f"Unknown error from '{label} ({machine['host']})'!\n\n{e}",
+                        prog.console.log(
+                            f"🔥 Unknown error from '{label} ({hostname})'!",
                             style="bold red",
                         )
+                        prog.console.print_exception()
 
                     results.append(
                         [
                             group,
                             label,
-                            get_hostname(device["host"]),
+                            hostname,
                             device["host"],
                             device["device_type"],
                             result,
@@ -207,14 +277,11 @@ def query(
         df_clean = df_clean.drop("Group", axis="columns")
 
     # Display
-    echo(
-        style(
-            f"Result of {style(cmd, italic=True, fg="reset")}",
-            bold=True,
-            fg="cyan",
-        )
+    console.print(
+        f"Result of '{"+".join(cmds) if len(cmds[0]) > 0 else "accessing the devices"}'",
+        style="bold cyan",
     )
-    echo(
+    console.print(
         tabulate(
             df_clean.values.tolist(),
             df_clean.columns.to_list(),
@@ -226,7 +293,7 @@ def query(
     # Handle writting output
     filename: str = output or prompt(
         "Output (.html .csv .json .txt False)",
-        default=f"{cmd.replace(" ", "_") if len(cmd)  > 0 else "accessible"}__{datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")}.csv",
+        default=f"{"+".join(cmds).replace(" ", "_") if len(cmds[0]) > 0 else "accessible"}__{datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")}.csv",
         type=str,
     )
     if filename != "False":
@@ -239,24 +306,18 @@ def query(
         elif filename.endswith("txt"):
             df.to_string(filename)
         else:
-            echo(
-                style("Unknown extension, outputted in TXT format.", fg="yellow"),
-                err=True,
-            )
-        echo(
-            style(
-                f"Output written to {style(filename, italic=True, fg="reset")}",
-                fg="cyan",
-                bold=True,
-            )
+            console.print("Unknown extension, outputted in TXT format.", style="yellow")
+        console.print(
+            f"Output written to '{filename}'",
+            style="cyan",
         )
 
     # Handle running multiple queries
     if multiple and prompt("Do you want to run another query?", False, type=bool):
-        query(
+        query(  # TODO: Update this
             machines,
             username,
             password,
-            prompt("Command", cmd),
+            prompt("Command", cmds),
             groups,
         )

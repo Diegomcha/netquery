@@ -3,6 +3,6 @@
 **/.vscode
 **/build
 **/*.egg-info
-output
+output_*
 machines
 templates/default

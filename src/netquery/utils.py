@@ -1,12 +1,15 @@
 from io import BytesIO
 from json import JSONDecodeError, load
 from socket import getnameinfo
-from typing import Any
+from typing import Any, Callable
 
 from click import UsageError
+from rich.console import Console
 from typer import Context, open_file
 
 type Machines = dict[str, dict[str, dict[str, Any]]]
+
+console = Console()
 
 
 def parse_machines(filename: str) -> Machines:
@@ -52,11 +55,14 @@ def validate_groups(ctx: Context, groups: list[str]) -> list[str]:
     Raises:
         UsageError: Whenever a user-specified group does not exist in the machines file's groups.
     """
-    if groups and not all(group in ctx.params["machines"] for group in groups):
+    if groups[0] == "all":
+        return list(ctx.params["machines"].keys())
+
+    if not all(group in ctx.params["machines"] for group in groups):
         raise UsageError(
             f"Some specified group is not present in the machines file.\nAvailable groups: {list(ctx.params["machines"].keys())}"
         )
-    return groups or ctx.params["machines"].keys()
+    return groups
 
 
 def get_hostname(ip: str) -> str:
@@ -72,9 +78,17 @@ def get_hostname(ip: str) -> str:
     return hostname
 
 
-class InMemoryLog(BytesIO):
-    def write(self, b):
-        # Ensure bytes are written
-        if isinstance(b, str):
-            b = b.encode("utf-8")
-        return super().write(b)
+def safe_splitter(sep: str) -> Callable[[str | list[str]], list[str]]:
+    """
+    Returns a parser function that safely splits a string by a given separator, or returns the input unchanged if it's already a list.
+
+    Used for Typer, where arguments may be parsed multiple times (e.g., once as a string and again by a custom parser), which can lead to errors if not handled properly.
+
+    Args:
+        sep (str): The separator to use when splitting a string input.
+
+    Returns:
+        Callable[[str | list[str]], list[str]]: A function that takes either a comma-separated string or a list of strings and returns a list of strings.
+
+    """
+    return lambda arr: arr.split(sep) if isinstance(arr, str) else arr

@@ -1,11 +1,20 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools==80.9.0", "setuptools-scm==8.3.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "netquery"
-version = "0.1.0"
-dependencies = ["netmiko", "typer", "tabulate", "pandas"]
+dynamic = ["version"]
+requires-python = ">=3.9,<4.0"
+dependencies = [
+    "netmiko==4.5.0",
+    "typer==0.16.0",
+    "tabulate==0.9.0",
+    "pandas==2.3.0",
+]
 
 [project.scripts]
 netquery = "netquery.main:app"
+
+[tool.setuptools_scm]
+fallback_version = "0.0.0"
