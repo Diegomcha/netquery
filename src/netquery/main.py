@@ -1,7 +1,7 @@
+import json
 import re
 from datetime import datetime, timezone
 from io import BytesIO
-from json import dumps
 from typing import Annotated, Any
 
 from netmiko import (
@@ -31,10 +31,11 @@ from netquery.utils import (
     validate_groups,
 )
 
+# Creating the typer instance
 app = Typer(pretty_exceptions_show_locals=False)
 
 
-# Command that does the querying
+# Defining the command with a python decorator
 @app.command()
 def query(
     machines: Annotated[
@@ -84,7 +85,7 @@ def query(
         Any,
         Option(
             parser=safe_splitter(","),
-            metavar="CMD1, CMD2,...",
+            metavar="CMD1,CMD2,...",
             help="Comma-separated list of commands to run on each device. Leave empty to only check SSH accessibility.",
             show_default="none",
             prompt="Commands (comma-separated)",
@@ -99,7 +100,7 @@ def query(
             show_default="device's default",
             prompt="Prompt patterns (comma-separated)",
         ),
-    ] = "default",
+    ] = "",
     textfsm_template: Annotated[
         str,
         Option(
@@ -118,12 +119,6 @@ def query(
             prompt="Output regex filter",
         ),
     ] = "",
-    multiple: Annotated[
-        bool,
-        Option(
-            help="Enable interactive mode to run multiple queries in a single session."
-        ),
-    ] = True,
     output: Annotated[
         str | None,
         Option(
@@ -134,15 +129,8 @@ def query(
     ] = None,
 ):
     """
-    Query a set of network devices over SSH and optionally run commands.
-
-    - Devices are defined in a .txt or .json file.
-    - Authenticate using a username and password.
-    - Run one or more commands across selected device groups.
-    - Results are shown in a formatted table and can be exported (CSV, HTML, JSON, TXT).
-    - Supports repeated queries in a single session.
+    Connect to a set of network devices over SSH and run commands.
     """
-
     # Query machines
     results = []
     with Progress(
@@ -157,6 +145,7 @@ def query(
             for label, machine in prog.track(
                 machines[group].items(), description=f"· {group}"
             ):
+                # Open an in-memory log for the session_log
                 with BytesIO() as log:
                     device = {
                         **{
@@ -173,47 +162,64 @@ def query(
                         if device["device_type"] == "autodetect":
                             device["device_type"] = SSHDetect(**device).autodetect()
 
+                        # If detection failed
                         if not device["device_type"]:
                             result = "❓ Unknown"
                             prog.console.log(
                                 f"❓ Unknown device type '{label} ({hostname})'!",
                                 style="bold red",
                             )
+
                         else:
                             with ConnectHandler(**device) as con:
                                 # If no commands, test it is accessible
                                 if len(cmds) == 1 and len(cmds[0]) == 0:
                                     result = "✅ Accessible"
                                 else:
+                                    # For single commands
                                     if len(cmds) == 1:
                                         result = con.send_command(
+                                            # Command & expected prompt
                                             cmds[0],
-                                            expect_string=prompt_patterns[0],
+                                            expect_string=(
+                                                prompt_patterns[0]
+                                                if len(prompt_patterns[0]) > 0
+                                                else None
+                                            ),
+                                            # TextFSM options
                                             use_textfsm=len(textfsm_template) > 0,
                                             textfsm_template=textfsm_template,
                                             raise_parsing_error=True,
                                         )
+                                    # For multiple/interactive commands
                                     else:
                                         result = con.send_multiline(
-                                            [
-                                                [cmd, pattern]
-                                                for cmd, pattern in zip(
-                                                    cmds, prompt_patterns
-                                                )
-                                            ],
+                                            # Commands & expected prompts
+                                            (
+                                                [
+                                                    [cmd, pattern]
+                                                    for cmd, pattern in zip(
+                                                        cmds, prompt_patterns
+                                                    )
+                                                ]
+                                                if len(prompt_patterns) == len(cmds)
+                                                else cmds
+                                            ),
+                                            # TextFSM options
                                             use_textfsm=len(textfsm_template) > 0,
                                             textfsm_template=textfsm_template,
                                             raise_parsing_error=True,
                                         )
 
-                                    # Parse JSON result if parsing template was used
+                                    # Parse JSON result if parsing template was provided
                                     if isinstance(result, (list, dict)):
-                                        result = dumps(result)
+                                        result = json.dumps(result)
 
-                                    # Filter output
+                                    # Filter output if output_regex was provided
                                     if len(output_regex) > 0:
                                         match = re.search(output_regex, result)
                                         if match:
+                                            # Filter to the first capturing group
                                             result = match.group(1)
                                         else:
                                             prog.console.log(
@@ -258,7 +264,7 @@ def query(
                         ]
                     )
 
-    # Sort table of results
+    # Sort table of results & move columns around
     df = DataFrame(
         results,
         columns=["Group", "Label", "Hostname", "IP", "Device Type", "Result", "Log"],
@@ -266,7 +272,7 @@ def query(
         ["Result", "Group", "Label", "Hostname", "IP", "Device Type", "Log"]
     ]
 
-    # Clean table for display
+    # Clean table for display (Cumbersome...)
     df_clean = df.copy()
     df_clean.loc[df_clean["Result"].duplicated(), "Result"] = '"'
     df_clean["Group"] = df.groupby("Result")["Group"].transform(
@@ -276,7 +282,7 @@ def query(
     if len(groups) == 1:
         df_clean = df_clean.drop("Group", axis="columns")
 
-    # Display
+    # Display the table
     console.print(
         f"Result of '{"+".join(cmds) if len(cmds[0]) > 0 else "accessing the devices"}'",
         style="bold cyan",
@@ -310,14 +316,4 @@ def query(
         console.print(
             f"Output written to '{filename}'",
             style="cyan",
-        )
-
-    # Handle running multiple queries
-    if multiple and prompt("Do you want to run another query?", False, type=bool):
-        query(  # TODO: Update this
-            machines,
-            username,
-            password,
-            prompt("Command", cmds),
-            groups,
         )
