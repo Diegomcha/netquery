@@ -13,6 +13,9 @@ dependencies = [
     "pandas==2.3.0",
 ]
 
+[project.optional-dependencies]
+dev = ["build==1.2.2.post1"]
+
 [project.scripts]
 netquery = "netquery.main:app"
 
