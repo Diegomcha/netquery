@@ -1,0 +1,14 @@
+{
+    "recommendations": [
+        "kevinrose.vsc-python-indent",
+        "njpwerner.autodocstring",
+        "ms-python.black-formatter",
+        "tamasfe.even-better-toml",
+        "eamodio.gitlens",
+        "ms-python.isort",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy",
+        "ms-python.vscode-python-envs",
+        "vivaxy.vscode-conventional-commits"
+    ],
+}
