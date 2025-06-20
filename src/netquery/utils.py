@@ -1,13 +1,16 @@
-from io import BytesIO
 from json import JSONDecodeError, load
 from socket import getnameinfo
 from typing import Any, Callable
 
 from click import UsageError
+from netmiko.ssh_dispatcher import CLASS_MAPPER
 from rich.console import Console
 from typer import Context, open_file
 
 type Machines = dict[str, dict[str, dict[str, Any]]]
+
+
+SUPPORTED_DEVICE_TYPES = CLASS_MAPPER.keys()
 
 console = Console()
 
@@ -63,6 +66,26 @@ def validate_groups(ctx: Context, groups: list[str]) -> list[str]:
             f"Some specified group is not present in the machines file.\nAvailable groups: {list(ctx.params["machines"].keys())}"
         )
     return groups
+
+
+def validate_device_type(device_type: str) -> str:
+    """Validates the specified device_type against the platforms supported by `netmiko`.
+
+    Args:
+        device_type (str): Device type to validate.
+
+    Raises:
+        UsageError: Whenever the specified device type is not supported.
+
+    Returns:
+        str: The device type itself.
+    """
+    if device_type not in SUPPORTED_DEVICE_TYPES:
+        raise UsageError(
+            f"Provided invalid device_type: '{device_type}'\nAvailable device types can be found here: https://github.com/ktbyers/netmiko/blob/develop/PLATFORMS.md"
+        )
+
+    return device_type
 
 
 def get_hostname(ip: str) -> str:

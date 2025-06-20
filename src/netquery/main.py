@@ -28,6 +28,7 @@ from netquery.utils import (
     get_hostname,
     parse_machines,
     safe_splitter,
+    validate_device_type,
     validate_groups,
 )
 
@@ -67,7 +68,8 @@ def query(
         str,
         Option(
             metavar="DEVICE_TYPE",
-            help="Default device type for machines without an explicit 'device_type'. Avoid 'autodetect' for large sets due to performance.",
+            callback=validate_device_type,
+            help="Default device type for machines without an explicit 'device_type'. The list of supported types can be found here: https://github.com/ktbyers/netmiko/blob/develop/PLATFORMS.md. Avoid 'autodetect' for large sets due to performance.",
             prompt="Default device type",
         ),
     ] = "autodetect",
