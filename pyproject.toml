@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "netquery"
 dynamic = ["version"]
-requires-python = ">=3.9,<4.0"
+requires-python = ">=3.10,<4.0"
 dependencies = [
     "netmiko==4.5.0",
     "typer==0.16.0",

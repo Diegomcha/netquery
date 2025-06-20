@@ -2,8 +2,10 @@ import json
 import re
 from datetime import datetime, timezone
 from io import BytesIO
+from pathlib import Path
 from typing import Annotated, Any
 
+import click
 from netmiko import (
     ConnectHandler,
     NetmikoAuthenticationException,
@@ -20,9 +22,10 @@ from rich.progress import (
     TextColumn,
 )
 from tabulate import tabulate
-from typer import Option, Typer, prompt
+from typer import FileTextWrite, Option, Typer, open_file, prompt
 
 from netquery.utils import (
+    REGEX_DISABLE,
     Machines,
     console,
     get_hostname,
@@ -113,20 +116,26 @@ def query(
         ),
     ] = "",
     output_regex: Annotated[
-        str,
+        re.Pattern,
         Option(
+            parser=lambda p: re.compile(p),
             metavar="REGEX",
             help="Regex pattern to filter command output locally. Applied after TextFSM parsing, if used.",
             show_default="disabled",
             prompt="Output regex filter",
         ),
-    ] = "",
-    output: Annotated[
-        str | None,
+    ] = REGEX_DISABLE,
+    output: Annotated[  # type: ignore
+        Path | None,
         Option(
             metavar="[FILENAME.html|FILENAME.json|FILENAME.csv|FILENAME.txt|False]",
             show_default="dynamic",
             help="Output filename for saving results. Use 'False' to disable saving. Format inferred from extension.",
+            file_okay=True,
+            dir_okay=False,
+            readable=False,
+            writable=True,
+            allow_dash=True,
         ),
     ] = None,
 ):
@@ -217,17 +226,16 @@ def query(
                                     if isinstance(result, (list, dict)):
                                         result = json.dumps(result)
 
-                                    # Filter output if output_regex was provided
-                                    if len(output_regex) > 0:
-                                        match = re.search(output_regex, result)
-                                        if match:
-                                            # Filter to the first capturing group
-                                            result = match.group(1)
-                                        else:
-                                            prog.console.log(
-                                                f"🔍 '{output_regex}' found no matches for '{label} ({hostname})'!",
-                                                style="bold yellow",
-                                            )
+                                    # Filter output
+                                    match = output_regex.match(result)
+                                    if match:
+                                        result = match.group()
+                                    else:
+                                        # Do not apply filter if nothing matches
+                                        prog.console.log(
+                                            f"🔍 '{output_regex}' found no matches for '{label} ({hostname})'!",
+                                            style="bold yellow",
+                                        )
 
                                 prog.console.log(
                                     f"✅ Task complete for device '{label} ({hostname})'",
@@ -299,23 +307,36 @@ def query(
     )
 
     # Handle writting output
-    filename: str = output or prompt(
+    output: Path = output or prompt(
         "Output (.html .csv .json .txt False)",
         default=f"{"+".join(cmds).replace(" ", "_") if len(cmds[0]) > 0 else "accessible"}__{datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")}.csv",
-        type=str,
+        value_proc=lambda p: click.Path(
+            file_okay=True,
+            dir_okay=False,
+            writable=True,
+            readable=False,
+            allow_dash=True,
+            path_type=Path,
+        ).convert(p, None, None),
     )
-    if filename != "False":
-        if filename.endswith("html"):
-            df.to_html(filename)
-        elif filename.endswith("csv"):
-            df.to_csv(filename)
-        elif filename.endswith("json"):
-            df.to_json(filename)
-        elif filename.endswith("txt"):
-            df.to_string(filename)
-        else:
-            console.print("Unknown extension, outputted in TXT format.", style="yellow")
+    if output.name != "False":
+        with open_file(output, "w") as output_file:
+            match output.suffix:
+                case ".html":
+                    df.to_html(output_file)
+                case ".csv":
+                    df.to_csv(output_file)
+                case ".json":
+                    df.to_json(output_file)
+                case ".txt":
+                    df.to_string(output_file)
+                case _:
+                    console.print(
+                        "Unknown extension, outputted in TXT format.", style="yellow"
+                    )
+                    df.to_string(output_file)
+
         console.print(
-            f"Output written to '{filename}'",
+            f"Output written to '{output}'",
             style="cyan",
         )

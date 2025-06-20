@@ -1,3 +1,4 @@
+import re
 from json import JSONDecodeError, load
 from socket import getnameinfo
 from typing import Any, Callable
@@ -11,6 +12,7 @@ type Machines = dict[str, dict[str, dict[str, Any]]]
 
 
 SUPPORTED_DEVICE_TYPES = CLASS_MAPPER.keys()
+REGEX_DISABLE = re.compile(".*")
 
 console = Console()
 
@@ -44,8 +46,8 @@ def parse_machines(filename: str) -> Machines:
                         ip.strip(): {"host": ip.strip()} for ip in file.readlines()
                     }
                 }
-    except (JSONDecodeError, FileNotFoundError) as e:
-        raise UsageError(f"Invalid machines file '{filename}'.\n{e}")
+    except (JSONDecodeError, OSError) as e:
+        raise UsageError(f"Invalid machines file.\n{e}")
 
 
 def validate_groups(ctx: Context, groups: list[str]) -> list[str]:
