@@ -1,8 +1,11 @@
 import re
 from json import JSONDecodeError, load
+from pathlib import Path
+from re import Pattern
 from socket import getnameinfo
-from typing import Any, Callable
+from typing import Any, Callable, Literal, cast
 
+import click
 from click import UsageError
 from netmiko.ssh_dispatcher import CLASS_MAPPER
 from rich.console import Console
@@ -12,7 +15,6 @@ type Machines = dict[str, dict[str, dict[str, Any]]]
 
 
 SUPPORTED_DEVICE_TYPES = CLASS_MAPPER.keys()
-REGEX_DISABLE = re.compile(".*")
 
 console = Console()
 
@@ -48,6 +50,97 @@ def parse_machines(filename: str) -> Machines:
                 }
     except (JSONDecodeError, OSError) as e:
         raise UsageError(f"Invalid machines file.\n{e}")
+
+
+def parse_regex(regex: str | Pattern | None) -> re.Pattern | None:
+    """Parses a regular expression into a python Pattern.
+
+    Args:
+        regex (str | Pattern | None): Regular expression string to parse.
+
+    Raises:
+        UsageError: If the regular expression is malformed.
+
+    Returns:
+        re.Pattern | None: Pattern or None if disabled.
+    """
+    # Already parsed
+    if regex == None or isinstance(regex, Pattern):
+        return regex
+
+    # Disable
+    if len(regex) == 0:
+        return None
+
+    # Compile regex
+    try:
+        return re.compile(regex)
+    except Exception as e:
+        raise UsageError(f"Error compiling regex.\n{e}")
+
+
+def parse_output(
+    filename: str | Path | Literal[False] | None,
+) -> Path | Literal[False] | None:
+    """Parses the output filename into a Path and verifies whether the file is writable.
+
+    Args:
+        filename (str | Path | Literal[False] | None): Filename to parse.
+
+    Returns:
+        Path | Literal[False] | None: Path, False if disabled or None if undefined.
+    """
+    # Already parsed
+    if not isinstance(filename, str):
+        return filename
+
+    # Disable
+    if filename == "False":
+        return False
+
+    # Perform validation
+    return cast(
+        Path,
+        click.Path(
+            file_okay=True,
+            dir_okay=False,
+            writable=True,
+            readable=False,
+            allow_dash=True,
+            path_type=Path,
+        ).convert(filename, None, None),
+    )
+
+
+def parse_textfsm_template(filename: str | Path | None) -> Path | None:
+    """Parses the filename into a Path and verifies the file is readable.
+
+    Args:
+        filename (str | Path | None): Filename to parse.
+
+    Returns:
+        Path | None: Path or None if disabled.
+    """
+    # Already parsed
+    if not isinstance(filename, str):
+        return filename
+
+    # Disable
+    if len(filename) == 0:
+        return None
+
+    # Perform validation
+    return cast(
+        Path,
+        click.Path(
+            file_okay=True,
+            dir_okay=False,
+            writable=False,
+            readable=True,
+            allow_dash=True,
+            path_type=Path,
+        ).convert(filename, None, None),
+    )
 
 
 def validate_groups(ctx: Context, groups: list[str]) -> list[str]:

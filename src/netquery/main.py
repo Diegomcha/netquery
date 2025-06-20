@@ -1,11 +1,8 @@
 import json
-import re
 from datetime import datetime, timezone
 from io import BytesIO
-from pathlib import Path
 from typing import Annotated, Any
 
-import click
 from netmiko import (
     ConnectHandler,
     NetmikoAuthenticationException,
@@ -22,14 +19,16 @@ from rich.progress import (
     TextColumn,
 )
 from tabulate import tabulate
-from typer import FileTextWrite, Option, Typer, open_file, prompt
+from typer import Option, Typer, open_file, prompt
 
 from netquery.utils import (
-    REGEX_DISABLE,
     Machines,
     console,
     get_hostname,
     parse_machines,
+    parse_output,
+    parse_regex,
+    parse_textfsm_template,
     safe_splitter,
     validate_device_type,
     validate_groups,
@@ -107,8 +106,9 @@ def query(
         ),
     ] = "",
     textfsm_template: Annotated[
-        str,
+        Any,
         Option(
+            parser=parse_textfsm_template,
             metavar="FILENAME",
             help="Path to a TextFSM template for parsing command output. Only used if 'cmds' is set.",
             show_default="disabled",
@@ -116,26 +116,22 @@ def query(
         ),
     ] = "",
     output_regex: Annotated[
-        re.Pattern,
+        Any,
         Option(
-            parser=lambda p: re.compile(p),
+            parser=parse_regex,
             metavar="REGEX",
             help="Regex pattern to filter command output locally. Applied after TextFSM parsing, if used.",
             show_default="disabled",
             prompt="Output regex filter",
         ),
-    ] = REGEX_DISABLE,
-    output: Annotated[  # type: ignore
-        Path | None,
+    ] = "",
+    output: Annotated[
+        Any,
         Option(
+            parser=parse_output,
             metavar="[FILENAME.html|FILENAME.json|FILENAME.csv|FILENAME.txt|False]",
             show_default="dynamic",
             help="Output filename for saving results. Use 'False' to disable saving. Format inferred from extension.",
-            file_okay=True,
-            dir_okay=False,
-            readable=False,
-            writable=True,
-            allow_dash=True,
         ),
     ] = None,
 ):
@@ -227,15 +223,16 @@ def query(
                                         result = json.dumps(result)
 
                                     # Filter output
-                                    match = output_regex.match(result)
-                                    if match:
-                                        result = match.group()
-                                    else:
-                                        # Do not apply filter if nothing matches
-                                        prog.console.log(
-                                            f"🔍 '{output_regex}' found no matches for '{label} ({hostname})'!",
-                                            style="bold yellow",
-                                        )
+                                    if output_regex:
+                                        match = output_regex.match(result)
+                                        if match:
+                                            result = match.group()
+                                        else:
+                                            # Do not apply filter if nothing matches
+                                            prog.console.log(
+                                                f"🔍 '{output_regex}' found no matches for '{label} ({hostname})'!",
+                                                style="bold yellow",
+                                            )
 
                                 prog.console.log(
                                     f"✅ Task complete for device '{label} ({hostname})'",
@@ -307,19 +304,13 @@ def query(
     )
 
     # Handle writting output
-    output: Path = output or prompt(
-        "Output (.html .csv .json .txt False)",
-        default=f"{"+".join(cmds).replace(" ", "_") if len(cmds[0]) > 0 else "accessible"}__{datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")}.csv",
-        value_proc=lambda p: click.Path(
-            file_okay=True,
-            dir_okay=False,
-            writable=True,
-            readable=False,
-            allow_dash=True,
-            path_type=Path,
-        ).convert(p, None, None),
-    )
-    if output.name != "False":
+    if output != False:
+        output = prompt(
+            "Output (.html .csv .json .txt False)",
+            default=f"{"+".join(cmds).replace(" ", "_") if len(cmds[0]) > 0 else "accessible"}__{datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")}.csv",
+            value_proc=parse_output,
+        )
+    if output != False:
         with open_file(output, "w") as output_file:
             match output.suffix:
                 case ".html":
