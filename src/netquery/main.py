@@ -22,10 +22,10 @@ from tabulate import tabulate
 from typer import Option, Typer, open_file, prompt
 
 from netquery.utils import (
-    Machines,
+    MultipleMachines,
     console,
     get_hostname,
-    parse_machines,
+    parse_multiple_machines,
     parse_output,
     parse_regex,
     parse_textfsm_template,
@@ -42,12 +42,12 @@ app = Typer(pretty_exceptions_show_locals=False)
 @app.command()
 def query(
     machines: Annotated[
-        Machines,
+        MultipleMachines,
         Option(
-            parser=parse_machines,
-            metavar="FILENAME",
-            help="Path to the file containing machine definitions (.json or .txt).",
-            prompt="Machines file (.txt or .json)",
+            parser=parse_multiple_machines,
+            metavar="FILENAME,FILENAME,...",
+            help="Comma-separated paths to the files containing machine definitions (.json or .txt).",
+            prompt="Machines files (Comma-separated, .txt or .json)",
         ),
     ],
     username: Annotated[
@@ -146,146 +146,168 @@ def query(
         BarColumn(),
         MofNCompleteColumn(),
         TaskProgressColumn(),
-        transient=True,
+        # transient=True,
     ) as prog:
-        for group in prog.track(groups, description="Querying..."):
-            for label, machine in prog.track(
-                machines[group].items(), description=f"· {group}"
-            ):
-                # Open an in-memory log for the session_log
-                with BytesIO() as log:
-                    device = {
-                        **{
-                            "username": username,
-                            "password": password,
-                            "device_type": device_type,
-                            "session_log": log,
-                        },
-                        **machine,
-                    }
-                    hostname = get_hostname(device["host"])
+        for filename in prog.track(machines.keys(), description="Querying..."):
+            for group in prog.track(groups, description=f"· {filename}"):
+                # Skip any group not present in current file
+                if group not in machines[filename]:
+                    continue
 
-                    try:
-                        if device["device_type"] == "autodetect":
-                            device["device_type"] = SSHDetect(**device).autodetect()
+                for label, machine in prog.track(
+                    machines[filename][group].items(), description=f"  · {group}"
+                ):
+                    # Open an in-memory log for the session_log
+                    with BytesIO() as log:
+                        device = {
+                            **{
+                                "username": username,
+                                "password": password,
+                                "device_type": device_type,
+                                "session_log": log,
+                            },
+                            **machine,
+                        }
+                        hostname = get_hostname(device["host"])
 
-                        # If detection failed
-                        if not device["device_type"]:
-                            result = "❓ Unknown"
-                            prog.console.log(
-                                f"❓ Unknown device type '{label} ({hostname})'!",
-                                style="bold red",
-                            )
+                        try:
+                            if device["device_type"] == "autodetect":
+                                device["device_type"] = SSHDetect(**device).autodetect()
 
-                        else:
-                            with ConnectHandler(**device) as con:
-                                # If no commands, test it is accessible
-                                if len(cmds) == 1 and len(cmds[0]) == 0:
-                                    result = "✅ Accessible"
-                                else:
-                                    # For single commands
-                                    if len(cmds) == 1:
-                                        result = con.send_command(
-                                            # Command & expected prompt
-                                            cmds[0],
-                                            expect_string=(
-                                                prompt_patterns[0]
-                                                if len(prompt_patterns[0]) > 0
-                                                else None
-                                            ),
-                                            # TextFSM options
-                                            use_textfsm=len(textfsm_template) > 0,
-                                            textfsm_template=textfsm_template,
-                                            raise_parsing_error=True,
-                                        )
-                                    # For multiple/interactive commands
-                                    else:
-                                        result = con.send_multiline(
-                                            # Commands & expected prompts
-                                            (
-                                                [
-                                                    [cmd, pattern]
-                                                    for cmd, pattern in zip(
-                                                        cmds, prompt_patterns
-                                                    )
-                                                ]
-                                                if len(prompt_patterns) == len(cmds)
-                                                else cmds
-                                            ),
-                                            # TextFSM options
-                                            use_textfsm=len(textfsm_template) > 0,
-                                            textfsm_template=textfsm_template,
-                                            raise_parsing_error=True,
-                                        )
-
-                                    # Parse JSON result if parsing template was provided
-                                    if isinstance(result, (list, dict)):
-                                        result = json.dumps(result)
-
-                                    # Filter output
-                                    if output_regex:
-                                        match = output_regex.match(result)
-                                        if match:
-                                            result = match.group()
-                                        else:
-                                            # Do not apply filter if nothing matches
-                                            prog.console.log(
-                                                f"🔍 '{output_regex}' found no matches for '{label} ({hostname})'!",
-                                                style="bold yellow",
-                                            )
-
+                            # If detection failed
+                            if not device["device_type"]:
+                                result = "❓ Unknown"
                                 prog.console.log(
-                                    f"✅ Task complete for device '{label} ({hostname})'",
-                                    style="bold green",
+                                    f"❓ Unknown device type '{label} ({hostname})'!",
+                                    style="bold red",
                                 )
 
-                    except NetmikoAuthenticationException:
-                        result = "⛔ Unauthorized"
-                        prog.console.log(
-                            f"⛔ Authentication failure at '{label} ({hostname})'!",
-                            style="bold red",
-                        )
-                    except NetmikoTimeoutException:
-                        result = "⌛ Timeout"
-                        prog.console.log(
-                            f"⌛ Failed to connect to '{label} ({hostname})'!",
-                            style="bold red",
-                        )
-                    except Exception:
-                        result = "🔥 Exception"
-                        prog.console.log(
-                            f"🔥 Unknown error from '{label} ({hostname})'!",
-                            style="bold red",
-                        )
-                        prog.console.print_exception()
+                            else:
+                                with ConnectHandler(**device) as con:
+                                    # If no commands, test it is accessible
+                                    if len(cmds) == 1 and len(cmds[0]) == 0:
+                                        result = "✅ Accessible"
+                                    else:
+                                        # For single commands
+                                        if len(cmds) == 1:
+                                            result = con.send_command(
+                                                # Command & expected prompt
+                                                cmds[0],
+                                                expect_string=(
+                                                    prompt_patterns[0]
+                                                    if len(prompt_patterns[0]) > 0
+                                                    else None
+                                                ),
+                                                # TextFSM options
+                                                use_textfsm=len(textfsm_template) > 0,
+                                                textfsm_template=textfsm_template,
+                                                raise_parsing_error=True,
+                                            )
+                                        # For multiple/interactive commands
+                                        else:
+                                            result = con.send_multiline(
+                                                # Commands & expected prompts
+                                                (
+                                                    [
+                                                        [cmd, pattern]
+                                                        for cmd, pattern in zip(
+                                                            cmds, prompt_patterns
+                                                        )
+                                                    ]
+                                                    if len(prompt_patterns) == len(cmds)
+                                                    else cmds
+                                                ),
+                                                # TextFSM options
+                                                use_textfsm=len(textfsm_template) > 0,
+                                                textfsm_template=textfsm_template,
+                                                raise_parsing_error=True,
+                                            )
 
-                    results.append(
-                        [
-                            group,
-                            label,
-                            hostname,
-                            device["host"],
-                            device["device_type"],
-                            result,
-                            log.getvalue().decode(),
-                        ]
-                    )
+                                        # Parse JSON result if parsing template was provided
+                                        if isinstance(result, (list, dict)):
+                                            result = json.dumps(result)
+
+                                        # Filter output
+                                        if output_regex:
+                                            match = output_regex.match(result)
+                                            if match:
+                                                result = match.group()
+                                            else:
+                                                # Do not apply filter if nothing matches
+                                                prog.console.log(
+                                                    f"🔍 '{output_regex}' found no matches for '{label} ({hostname})'!",
+                                                    style="bold yellow",
+                                                )
+
+                                    prog.console.log(
+                                        f"✅ Task complete for device '{label} ({hostname})'",
+                                        style="bold green",
+                                    )
+
+                        except NetmikoAuthenticationException:
+                            result = "⛔ Unauthorized"
+                            prog.console.log(
+                                f"⛔ Authentication failure at '{label} ({hostname})'!",
+                                style="bold red",
+                            )
+                        except NetmikoTimeoutException:
+                            result = "⌛ Timeout"
+                            prog.console.log(
+                                f"⌛ Failed to connect to '{label} ({hostname})'!",
+                                style="bold red",
+                            )
+                        except Exception:
+                            result = "🔥 Exception"
+                            prog.console.log(
+                                f"🔥 Unknown error from '{label} ({hostname})'!",
+                                style="bold red",
+                            )
+                            prog.console.print_exception()
+
+                        results.append(
+                            [
+                                filename,
+                                group,
+                                label,
+                                hostname,
+                                device["host"],
+                                device["device_type"],
+                                result,
+                                log.getvalue().decode(),
+                            ]
+                        )
 
     # Sort table of results & move columns around
     df = DataFrame(
         results,
-        columns=["Group", "Label", "Hostname", "IP", "Device Type", "Result", "Log"],
-    ).sort_values(["Result", "Group", "Label", "Hostname", "IP", "Device Type"])[
-        ["Result", "Group", "Label", "Hostname", "IP", "Device Type", "Log"]
+        columns=[
+            "File",
+            "Group",
+            "Label",
+            "Hostname",
+            "IP",
+            "Device Type",
+            "Result",
+            "Log",
+        ],
+    ).sort_values(
+        ["Result", "File", "Group", "Label", "Hostname", "IP", "Device Type"]
+    )[
+        ["Result", "File", "Group", "Label", "Hostname", "IP", "Device Type", "Log"]
     ]
 
     # Clean table for display (Cumbersome...)
     df_clean = df.copy()
     df_clean.loc[df_clean["Result"].duplicated(), "Result"] = '"'
-    df_clean["Group"] = df.groupby("Result")["Group"].transform(
+    df_clean["File"] = df.groupby("Result")["File"].transform(
         lambda x: x.mask(x.duplicated(), '"')
     )
+
+    # TODO: Continue here
+
     df_clean = df_clean.drop("Log", axis="columns")
+    if len(machines.keys()) == 1:
+        df_clean = df_clean.drop("File", axis="columns")
     if len(groups) == 1:
         df_clean = df_clean.drop("Group", axis="columns")
 
@@ -318,7 +340,7 @@ def query(
                 case ".csv":
                     df.to_csv(output_file)
                 case ".json":
-                    df.to_json(output_file)
+                    df.to_json(output_file, orient="records", lines=True)
                 case ".txt":
                     df.to_string(output_file)
                 case _:

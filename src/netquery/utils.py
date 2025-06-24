@@ -12,11 +12,29 @@ from rich.console import Console
 from typer import Context, open_file
 
 type Machines = dict[str, dict[str, dict[str, Any]]]
+type MultipleMachines = dict[str, Machines]
 
 
 SUPPORTED_DEVICE_TYPES = CLASS_MAPPER.keys()
 
 console = Console()
+
+
+def parse_multiple_machines(filenames: str) -> MultipleMachines:
+    """Parses multiple machines files.
+
+    Args:
+        filenames (str): Filenames comma-separated.
+
+    Returns:
+        dict[str, Machines]: Machines.
+    """
+    # Already parsed
+    if isinstance(filenames, dict):
+        return filenames
+
+    # Parse machines
+    return {filename: parse_machines(filename) for filename in filenames.split(",")}
 
 
 def parse_machines(filename: str) -> Machines:
@@ -144,23 +162,33 @@ def parse_textfsm_template(filename: str | Path | None) -> Path | None:
 
 
 def validate_groups(ctx: Context, groups: list[str]) -> list[str]:
-    """Validates the specified groups agains the machines file's groups.
+    """Validates the specified groups agains the machines files' groups.
 
     Args:
         ctx (Context): Context of the command.
         groups (list[str]): List of groups specified in the command.
 
     Raises:
-        UsageError: Whenever a user-specified group does not exist in the machines file's groups.
+        UsageError: Whenever a user-specified group does not exist in the machines files' groups.
     """
-    if groups[0] == "all":
-        return list(ctx.params["machines"].keys())
 
-    if not all(group in ctx.params["machines"] for group in groups):
+    # Compute a set of all possible groups
+    all_groups = set(
+        [group for file in ctx.params["machines"].values() for group in file.keys()]
+    )
+
+    if groups[0] == "all":
+        return list(all_groups)
+
+    if not all(
+        any(group in file for file in ctx.params["machines"].values())
+        for group in groups
+    ):
         raise UsageError(
-            f"Some specified group is not present in the machines file.\nAvailable groups: {list(ctx.params["machines"].keys())}"
+            "Some specified group is not present in any of the machines files."
         )
-    return groups
+
+    return list(groups)
 
 
 def validate_device_type(device_type: str) -> str:
