@@ -298,12 +298,13 @@ def query(
 
     # Clean table for display (Cumbersome...)
     df_clean = df.copy()
-    df_clean.loc[df_clean["Result"].duplicated(), "Result"] = '"'
+    df_clean.loc[df_clean["Result"].duplicated(), "Result"] = "''"
     df_clean["File"] = df.groupby("Result")["File"].transform(
-        lambda x: x.mask(x.duplicated(), '"')
+        lambda x: x.mask(x.duplicated(), "''")
     )
-
-    # TODO: Continue here
+    df_clean["Group"] = df.groupby(["Result", "File"])["Group"].transform(
+        lambda x: x.mask(x.duplicated(), "''")
+    )
 
     df_clean = df_clean.drop("Log", axis="columns")
     if len(machines.keys()) == 1:
@@ -327,12 +328,13 @@ def query(
 
     # Handle writting output
     if output != False:
-        output = prompt(
-            "Output (.html .csv .json .txt False)",
-            default=f"{"+".join(cmds).replace(" ", "_") if len(cmds[0]) > 0 else "accessible"}__{datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")}.csv",
-            value_proc=parse_output,
-        )
-    if output != False:
+        if output == None:
+            output = prompt(
+                "Output (.html .csv .json .txt False)",
+                default=f"{"+".join(cmds).replace(" ", "_") if len(cmds[0]) > 0 else "accessible"}__{datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")}.csv",
+                value_proc=parse_output,
+            )
+
         with open_file(output, "w") as output_file:
             match output.suffix:
                 case ".html":
