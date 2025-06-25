@@ -1,26 +1,36 @@
-# TODO: los dispositivos que no sean accessibles?
-# TODO:
-
-# Creating the typer instance
+import json
 from typing import Annotated
 
-from pandas import DataFrame, read_csv, read_html, read_json
-from typer import FileText, Typer, run
+from pandas import read_csv
+from typer import FileBinaryRead, FileText, FileTextWrite, Option, Typer
 
-from netquery.utils import console
-
-# def main(
-#     file,
-#     # template
-# ):
-res = read_csv("~/app/output_cisco_wlc.csv")
-
-a = res.to_dict("")
-
-# console.print(res)
-# TODO: read_json, read_html
-# TODO: read_json, read_html
+# Creating the typer instance
+app = Typer(pretty_exceptions_show_locals=False)
 
 
-# if __name__ == "__main__":
-#     run(main)
+# Defining the command with a python decorator
+@app.command()
+def main(
+    input: Annotated[
+        FileText,
+        Option(
+            help="Input CSV file outputted by the main utility.",
+            prompt="Input (.csv)",
+        ),
+    ],
+    output: Annotated[FileTextWrite, Option()],
+):
+    res = read_csv("~/app/output_cisco_wlc.csv")
+
+    dict = {}
+
+    def parser(r):
+        dict.setdefault(r["Device Type"], {})[r["Hostname"]] = {
+            "host": r["IP"],
+            "device_type": r["Device Type"],
+        }
+        return r
+
+    res.apply(parser, "columns")
+
+    json.dump(dict, output, sort_keys=True, indent=2)
