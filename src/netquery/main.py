@@ -199,7 +199,7 @@ def query(
                                                     else None
                                                 ),
                                                 # TextFSM options
-                                                use_textfsm=len(textfsm_template) > 0,
+                                                use_textfsm=textfsm_template != None,
                                                 textfsm_template=textfsm_template,
                                                 raise_parsing_error=True,
                                             )
@@ -218,7 +218,7 @@ def query(
                                                     else cmds
                                                 ),
                                                 # TextFSM options
-                                                use_textfsm=len(textfsm_template) > 0,
+                                                use_textfsm=textfsm_template != None,
                                                 textfsm_template=textfsm_template,
                                                 raise_parsing_error=True,
                                             )
