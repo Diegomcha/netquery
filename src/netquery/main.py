@@ -10,6 +10,7 @@ from netmiko import (
     SSHDetect,
 )
 from pandas import DataFrame
+from pathvalidate import Platform, sanitize_filename
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -340,7 +341,10 @@ def query(
         if output == None:
             output = prompt(
                 "Output (.html .csv .json .txt False)",
-                default=f"{"+".join(cmds).replace(" ", "_") if len(cmds[0]) > 0 else "accessible"}__{datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")}.csv",
+                default=sanitize_filename(
+                    f"{"+".join(cmds).replace(" ", "_") if len(cmds[0]) > 0 else "accessible"}__{datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")}.csv",
+                    platform=Platform.UNIVERSAL,
+                ),
                 value_proc=parse_output,
             )
 
