@@ -5,7 +5,7 @@ from typing import Annotated
 from pandas import Series, read_csv
 from typer import FileText, FileTextWrite, Option, Typer
 
-from netquery.utils import console
+from netquery.utils import console, version_callback
 
 # Creating the typer instance
 app = Typer(pretty_exceptions_show_locals=False)
@@ -50,6 +50,14 @@ def main(
         Field,
         Option(help="Field to use as the label for each device.", case_sensitive=False),
     ] = Field.HOSTNAME,
+    version: Annotated[
+        bool | None,
+        Option(
+            "--version",
+            callback=version_callback,
+            help="Displays the version of the utility and quits.",
+        ),
+    ] = None,
 ):
     """
     Converts a CSV file outputted by `netquery` into a structured JSON format compatible with the input of `netquery`.

@@ -9,7 +9,9 @@ import click
 from click import UsageError
 from netmiko.ssh_dispatcher import CLASS_MAPPER
 from rich.console import Console
-from typer import Context, open_file
+from typer import Context, Exit, open_file
+
+from netquery._version import version
 
 type Machines = dict[str, dict[str, dict[str, Any]]]
 type MultipleMachines = dict[str, Machines]
@@ -238,3 +240,11 @@ def safe_splitter(sep: str) -> Callable[[str | list[str]], list[str]]:
 
     """
     return lambda arr: arr.split(sep) if isinstance(arr, str) else arr
+
+
+def version_callback():
+    """
+    Callback that displays the version of the package.
+    """
+    console.print(version, highlight=False)
+    raise Exit()

@@ -32,6 +32,7 @@ from netquery.utils import (
     safe_splitter,
     validate_device_type,
     validate_groups,
+    version_callback,
 )
 
 # Creating the typer instance
@@ -132,6 +133,14 @@ def query(
             metavar="[FILENAME.html|FILENAME.json|FILENAME.csv|FILENAME.txt|False]",
             show_default="dynamic",
             help="Output filename for saving results. Use 'False' to disable saving. Format inferred from extension.",
+        ),
+    ] = None,
+    version: Annotated[
+        bool | None,
+        Option(
+            "--version",
+            callback=version_callback,
+            help="Displays the version of the utility and quits.",
         ),
     ] = None,
 ):
