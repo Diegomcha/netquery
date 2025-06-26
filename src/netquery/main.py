@@ -146,7 +146,7 @@ def query(
         BarColumn(),
         MofNCompleteColumn(),
         TaskProgressColumn(),
-        # transient=True,
+        transient=True,
     ) as prog:
         for filename in prog.track(machines.keys(), description="Querying..."):
             for group in prog.track(groups, description=f"· {filename}"):
@@ -229,7 +229,7 @@ def query(
 
                                         # Filter output
                                         if output_regex:
-                                            match = output_regex.match(result)
+                                            match = output_regex.search(result)
                                             if match:
                                                 result = match.group()
                                             else:
