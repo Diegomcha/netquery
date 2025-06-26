@@ -45,7 +45,7 @@ def query(
         MultipleMachines,
         Option(
             parser=parse_multiple_machines,
-            metavar="FILENAME,FILENAME,...",
+            metavar="FILENAME1,FILENAME2,...",
             help="Comma-separated paths to the files containing machine definitions (.json or .txt).",
             prompt="Machines files (Comma-separated, .txt or .json)",
         ),
