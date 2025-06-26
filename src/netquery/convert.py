@@ -43,12 +43,18 @@ def main(
     groupby: Annotated[
         Field,
         Option(
-            help="Field to group devices by in the output JSON.", case_sensitive=False
+            help="Field to group devices by in the output JSON.",
+            case_sensitive=False,
+            prompt="Group by",
         ),
     ] = Field.DEVICE_TYPE,
     labelby: Annotated[
         Field,
-        Option(help="Field to use as the label for each device.", case_sensitive=False),
+        Option(
+            help="Field to use as the label for each device.",
+            case_sensitive=False,
+            prompt="Label by",
+        ),
     ] = Field.HOSTNAME,
     version: Annotated[
         bool | None,

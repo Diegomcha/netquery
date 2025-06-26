@@ -242,9 +242,10 @@ def safe_splitter(sep: str) -> Callable[[str | list[str]], list[str]]:
     return lambda arr: arr.split(sep) if isinstance(arr, str) else arr
 
 
-def version_callback():
+def version_callback(val: bool):
     """
     Callback that displays the version of the package.
     """
-    console.print(version, highlight=False)
-    raise Exit()
+    if val:
+        console.print(version, highlight=False)
+        raise Exit()
