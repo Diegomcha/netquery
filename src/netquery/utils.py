@@ -1,4 +1,5 @@
 import re
+from importlib.metadata import version
 from json import JSONDecodeError, load
 from pathlib import Path
 from re import Pattern
@@ -10,8 +11,6 @@ from click import UsageError
 from netmiko.ssh_dispatcher import CLASS_MAPPER
 from rich.console import Console
 from typer import Context, Exit, open_file
-
-from netquery._version import version
 
 type Machines = dict[str, dict[str, dict[str, Any]]]
 type MultipleMachines = dict[str, Machines]
@@ -247,5 +246,5 @@ def version_callback(val: bool):
     Callback that displays the version of the package.
     """
     if val:
-        console.print(version, highlight=False)
+        console.print(version("netquery"), highlight=False)
         raise Exit()

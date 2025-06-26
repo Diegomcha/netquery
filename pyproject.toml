@@ -19,6 +19,6 @@ dev = ["build==1.2.2.post1"]
 [project.scripts]
 netquery = "netquery.main:app"
 netquery-convert = "netquery.convert:app"
+
 [tool.setuptools_scm]
 fallback_version = "0.0.0"
-version_file = "src/netquery/_version.py"
