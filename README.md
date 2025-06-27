@@ -7,7 +7,7 @@
 
 ### 1. Clone the repository & move inside
 ```sh
-# TODO: git clone <your-repo-url>
+git clone https://github.com/Diegomcha/netquery.git
 cd netquery
 ```
 
