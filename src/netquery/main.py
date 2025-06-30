@@ -355,7 +355,7 @@ def query(
                 case ".csv":
                     df.to_csv(output_file)
                 case ".json":
-                    df.to_json(output_file, orient="records", lines=True)
+                    df.to_json(output_file, orient="records", lines=True, indent=4)
                 case ".txt":
                     df.to_string(output_file)
                 case _:
