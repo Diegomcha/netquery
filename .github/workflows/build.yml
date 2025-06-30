@@ -3,8 +3,8 @@ name: Create build & release
 on:
   push:
     # Pattern matched against refs/tags
-    tags:        
-      - '*'  
+    # tags:        
+    #   - '*'  
 
 permissions:
   contents: read
@@ -32,5 +32,5 @@ jobs:
         with:
           generate_release_notes: true
           draft: true
-          files: dist/
+          files: dist/*
           fail_on_unmatched_files: true
