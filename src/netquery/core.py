@@ -19,8 +19,7 @@ from netquery.exceptions import (
 from netquery.utils import MultipleMachines, get_hostname
 
 
-# TODO: tabulator
-def query_machine(
+def query_machines(
     machines: MultipleMachines,
     username: str,
     password: str,

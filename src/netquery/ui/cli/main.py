@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timezone
+from importlib.metadata import version
 from io import BytesIO
 from typing import Annotated, Any
 
@@ -10,6 +11,16 @@ from netmiko import (
     SSHDetect,
 )
 from pandas import DataFrame
+from parsers import (
+    cli_parse_machines_files,
+    cli_parse_output,
+    cli_parse_regex,
+    cli_parse_textfsm_template,
+    cli_validate_device_type,
+    cli_validate_groups,
+    console,
+    safe_splitter,
+)
 from pathvalidate import Platform, sanitize_filename
 from rich.progress import (
     BarColumn,
@@ -20,24 +31,21 @@ from rich.progress import (
     TextColumn,
 )
 from tabulate import tabulate
-from typer import Option, Typer, open_file, prompt
+from typer import Exit, Option, Typer, open_file, prompt
 
-from netquery.utils import (
-    MultipleMachines,
-    console,
-    get_hostname,
-    parse_multiple_machines,
-    parse_output,
-    parse_regex,
-    parse_textfsm_template,
-    safe_splitter,
-    validate_device_type,
-    validate_groups,
-    version_callback,
-)
+from netquery.utils_new import MultipleMachines, get_hostname
 
 # Creating the typer instance
 app = Typer(pretty_exceptions_show_locals=False)
+
+
+def version_callback(val: bool):
+    """
+    Callback that displays the version of the package.
+    """
+    if val:
+        console.print(version("netquery"), highlight=False)
+        raise Exit()
 
 
 # Defining the command with a python decorator
@@ -46,7 +54,7 @@ def query(
     machines: Annotated[
         MultipleMachines,
         Option(
-            parser=parse_multiple_machines,
+            parser=cli_parse_machines_files,
             metavar="FILENAME1,FILENAME2,...",
             help="Comma-separated paths to the files containing machine definitions (.json or .txt).",
             prompt="Machines files (Comma-separated, .txt or .json)",
@@ -72,7 +80,7 @@ def query(
         str,
         Option(
             metavar="DEVICE_TYPE",
-            callback=validate_device_type,
+            callback=cli_validate_device_type,
             help="Default device type for machines without an explicit 'device_type'. The list of supported types can be found here: https://github.com/ktbyers/netmiko/blob/develop/PLATFORMS.md. Avoid 'autodetect' for large sets due to performance.",
             prompt="Default device type",
         ),
@@ -81,7 +89,7 @@ def query(
         Any,
         Option(
             parser=safe_splitter(","),
-            callback=validate_groups,
+            callback=cli_validate_groups,
             metavar="GROUP1,GROUP2,...",
             help="Comma-separated list of machine groups to include. If omitted, all groups are used.",
             prompt="Groups (comma-separated)",
@@ -110,7 +118,7 @@ def query(
     textfsm_template: Annotated[
         Any,
         Option(
-            parser=parse_textfsm_template,
+            parser=cli_parse_textfsm_template,
             metavar="FILENAME",
             help="Path to a TextFSM template for parsing command output. Only used if 'cmds' is set.",
             show_default="disabled",
@@ -120,7 +128,7 @@ def query(
     output_regex: Annotated[
         Any,
         Option(
-            parser=parse_regex,
+            parser=cli_parse_regex,
             metavar="REGEX",
             help="Regex pattern to filter command output locally. Applied after TextFSM parsing, if used.",
             show_default="disabled",
@@ -130,7 +138,7 @@ def query(
     output: Annotated[
         Any,
         Option(
-            parser=parse_output,
+            parser=cli_parse_output,
             metavar="[FILENAME.html|FILENAME.json|FILENAME.csv|FILENAME.txt|False]",
             show_default="dynamic",
             help="Output filename for saving results. Use 'False' to disable saving. Format inferred from extension.",
@@ -345,7 +353,7 @@ def query(
                     f"{"+".join(cmds).replace(" ", "_") if len(cmds[0]) > 0 else "accessible"}__{datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")}.csv",
                     platform=Platform.UNIVERSAL,
                 ),
-                value_proc=parse_output,
+                value_proc=cli_parse_output,
             )
 
         with open_file(output, "w") as output_file:
