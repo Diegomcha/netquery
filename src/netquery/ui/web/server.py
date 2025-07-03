@@ -1,15 +1,21 @@
 import json
 import re
-import tempfile
-from typing import IO, Annotated, Iterable, Optional, cast
+from typing import Annotated
+from uuid import uuid4
 
+from cachetools import TTLCache
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pathvalidate import sanitize_filename
 
 from netquery.core import query_machines
 from netquery.utils_new import (
     SUPPORTED_DEVICE_TYPES,
+    MultipleMachines,
     NamedStream,
+    gen_default_filename,
     parse_machines_multiple,
     parse_regex,
     validate_device_type,
@@ -17,8 +23,41 @@ from netquery.utils_new import (
 )
 
 app = FastAPI()
+cache = TTLCache(25, 300)
 
-templates = Jinja2Templates(directory="src/netquery/templates")
+app.mount(
+    "/static", StaticFiles(directory="src/netquery/ui/web/client/static"), name="static"
+)
+templates = Jinja2Templates(directory="src/netquery/ui/web/client/templates")
+
+
+def web_query(
+    machines: MultipleMachines,
+    username: str,
+    password: str,
+    device_type: str,
+    groups: list[str],
+    cmds: list[str],
+    prompt_patterns: list[str],
+    textfsm_template: str,
+    output_regex: re.Pattern,
+):
+    for i, row in enumerate(
+        query_machines(
+            machines,
+            username,
+            password,
+            device_type,
+            groups,
+            cmds,
+            prompt_patterns,
+            textfsm_template,
+            output_regex,
+        )
+    ):
+        yield f"id:{i}\ndata:{json.dumps(row)}\n\n"
+
+    yield f"event:finished\ndata:{gen_default_filename(cmds)}\n\n"
 
 
 @app.get("/")
@@ -27,6 +66,26 @@ def read_root(request: Request):
         request=request,
         name="form.html",
         context={"device_types": sorted(SUPPORTED_DEVICE_TYPES)},
+    )
+
+
+@app.get("/stream/{id}")
+async def stream(id: str):
+    try:
+        return StreamingResponse(cache.pop(id), media_type="text/event-stream")
+    except KeyError:
+        return HTTPException(404, "Not found")
+
+
+@app.get("/results/{id}")
+def results(request: Request, id: str):
+    # if id not in cache.keys():
+    #     return RedirectResponse("/")
+
+    return templates.TemplateResponse(
+        request=request,
+        name="results.html",
+        context={},
     )
 
 
@@ -73,13 +132,8 @@ def execute(
     except re.error as e:
         raise HTTPException(400, f"Invalid output regex {repr(e)}")
 
-    # print(parsed["machines"])
+    id = str(uuid4())
+    cache[id] = web_query(**parsed)
+    # cache[id] = event_gen()
 
-    # return parsed
-
-    arr = []
-    for row in query_machines(**parsed):
-        print(row)
-        arr.append(row)
-
-    return arr
+    return RedirectResponse(f"/results/{id}", 302)

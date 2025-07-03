@@ -1,9 +1,11 @@
 import json
 import re
+from datetime import datetime, timezone
 from socket import getnameinfo
 from typing import IO, Any, Optional
 
 from netmiko.ssh_dispatcher import CLASS_MAPPER
+from pathvalidate import Platform, sanitize_filename
 
 # Custom types
 type Machines = dict[str, dict[str, dict[str, Any]]]
@@ -138,3 +140,12 @@ def get_hostname(ip: str) -> str:
     """
     hostname, _ = getnameinfo((ip, 0), 0)
     return hostname
+
+
+def gen_default_filename(
+    cmds: list[str],
+):
+    return sanitize_filename(
+        f"{"+".join(cmds).replace(" ", "_") if len(cmds[0]) > 0 else "accessible"}__{datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")}.csv",
+        platform=Platform.UNIVERSAL,
+    )

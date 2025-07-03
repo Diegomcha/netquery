@@ -1,0 +1,10 @@
+{
+    "compilerOptions": {
+        "checkJs": true
+    },
+    "include": [
+        "./.vscode/types/index.d.ts",
+        "./.vscode/types/bootstrap/index.d.ts",
+        "**/*.js"
+    ],
+}

@@ -4,5 +4,8 @@
         "build": true,
         "**/*.egg-info": true,
         "**/__pycache__": true,
-    }
+    },
+    "conventionalCommits.scopes": [
+        "web"
+    ]
 }
