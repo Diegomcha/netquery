@@ -1,4 +1,5 @@
 import re
+from copy import deepcopy
 from importlib.metadata import version
 from json import JSONDecodeError, load
 from pathlib import Path
@@ -248,3 +249,19 @@ def version_callback(val: bool):
     if val:
         console.print(version("netquery"), highlight=False)
         raise Exit()
+
+
+def strip_device(device: dict) -> dict:
+    """Strips sensitive information from a device.
+
+    Args:
+        device (dict): Device to strip the sensitive information from.
+
+    Returns:
+        dict: Device with the sensitive information stripped.
+    """
+    stripped = deepcopy(device)
+    del stripped["username"]
+    del stripped["password"]
+
+    return stripped

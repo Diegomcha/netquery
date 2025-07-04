@@ -1,0 +1,142 @@
+{% extends "base.html" %} {% block content %}
+<form
+  method="post"
+  enctype="multipart/form-data"
+  action="/execute"
+  class="row row-gap-3"
+>
+  <fieldset class="card card-body">
+    <legend class="card-title">Machines</legend>
+    <div class="row row-gap-3">
+      <div>
+        <label for="machineFiles" class="form-label">Machines file(s)</label>
+        <input
+          class="form-control"
+          id="machineFiles"
+          name="machines_files"
+          type="file"
+          accept=".json,.txt"
+          multiple
+          required
+        />
+      </div>
+      <div class="col">
+        <label for="groups" class="form-label">Group(s)</label>
+        <input
+          class="form-control"
+          id="groups"
+          name="groups"
+          type="text"
+          value="all"
+          required
+        />
+        <div id="groupsHelp" class="form-text">Comma-separated list.</div>
+      </div>
+      <div class="col">
+        <label for="deviceType" class="form-label">Default device type</label>
+        <select id="deviceType" name="device_type" class="form-select" required>
+            {% for device_type in device_types %}
+            <option value="{{ device_type }}" {% if device_type=='autodetect' %} selected {% endif %}>
+                {{device_type}}
+            </option>
+            {% endfor %}
+        </select>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset class="card card-body">
+    <legend class="card-title">Credentials</legend>
+    <div class="row row-gap-3">
+      <div class="col">
+        <label for="username" class="form-label">Username</label>
+        <input
+          class="form-control"
+          id="username"
+          name="username"
+          type="text"
+          required
+        />
+      </div>
+      <div class="col">
+        <label for="password" class="form-label">Password</label>
+        <input
+          class="form-control"
+          id="password"
+          name="password"
+          type="password"
+          required
+        />
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset class="card card-body">
+    <legend class="card-title">Commands</legend>
+    <div class="row row-gap-3">
+      <div>
+        <label for="commands" class="form-label">Command(s)</label>
+        <div class="input-group">
+          <span class="input-group-text">$</span>
+          <input
+            class="form-control"
+            id="commands"
+            name="commands"
+            type="text"
+            placeholder="Check accessibility"
+          />
+        </div>
+        <div id="commandsHelp" class="form-text">Comma-separated list.</div>
+      </div>
+      <div>
+        <label for="expectedPrompts" class="form-label"
+          >Expected prompt(s)</label
+        >
+        <input
+          class="form-control"
+          id="expectedPrompts"
+          name="expected_prompts"
+          type="text"
+          placeholder="default"
+        />
+        <div id="expectedPromptsHelp" class="form-text">
+          Comma-separated list.
+        </div>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset class="card card-body">
+    <legend class="card-title">Parsing</legend>
+    <div class="row row-gap-3">
+      <div class="col">
+        <label for="textfsmTemplate" class="form-label">TextFSM template</label>
+        <input
+          class="form-control"
+          id="textfsmTemplate"
+          name="textfsm_template"
+          type="file"
+          accept=".textfsm"
+          disabled
+        />
+        <!-- TODO: Remove -->
+        <div id="textfsmTemplateHelp" class="form-text">
+          Temporarily unavailable. Presents technical challenges.
+        </div>
+      </div>
+      <div class="col">
+        <label for="outputRegex" class="form-label">Output regex</label>
+        <input
+          class="form-control"
+          id="outputRegex"
+          name="output_regex"
+          type="text"
+          placeholder="Disabled"
+        />
+      </div>
+    </div>
+  </fieldset>
+
+  <button type="submit" class="btn btn-primary col-auto">Execute</button>
+</form>
+{% endblock %}
