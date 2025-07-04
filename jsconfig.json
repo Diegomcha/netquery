@@ -1,6 +1,7 @@
 {
     "compilerOptions": {
-        "checkJs": true
+        "checkJs": true,
+        "strict": true
     },
     "include": [
         "./.vscode/types/index.d.ts",

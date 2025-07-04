@@ -39,16 +39,6 @@ def query_machines(
     ]
 
     for i, (filename, group, label, machine) in enumerate(work, 1):
-
-        # TODO: Remove!
-        # for filename in machines.keys():
-        #     for group in groups:
-        #         # Skip any group not present in current file
-        #         if group not in machines[filename]:
-        #             continue
-
-        #         for label, machine in machines[filename][group].items():
-
         # Open an in-memory log for the session_log
         with BytesIO() as log:
             device = {

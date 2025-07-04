@@ -1,20 +1,22 @@
 import json
 import re
-from typing import Annotated
+from typing import Annotated, Any, AsyncGenerator, Callable, Generator
 from uuid import uuid4
 
+from anyio import Event
 from cachetools import TTLCache
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pathvalidate import sanitize_filename
+from sse_starlette import ServerSentEvent
+from sse_starlette.sse import EventSourceResponse
 
 from netquery.core import query_machines
 from netquery.utils_new import (
     SUPPORTED_DEVICE_TYPES,
-    MultipleMachines,
     NamedStream,
+    async_gen,
     gen_default_filename,
     parse_machines_multiple,
     parse_regex,
@@ -23,75 +25,65 @@ from netquery.utils_new import (
 )
 
 app = FastAPI()
-cache = TTLCache(25, 300)
 
+templates = Jinja2Templates(directory="src/netquery/ui/web/client/templates")
 app.mount(
     "/static", StaticFiles(directory="src/netquery/ui/web/client/static"), name="static"
 )
-templates = Jinja2Templates(directory="src/netquery/ui/web/client/templates")
+
+cache: TTLCache[str, Callable[[Request], AsyncGenerator[ServerSentEvent, Any]]] = (
+    TTLCache(25, 300)
+)
+stop: dict[str, Event] = {}
 
 
 def web_query(
-    machines: MultipleMachines,
-    username: str,
-    password: str,
-    device_type: str,
-    groups: list[str],
-    cmds: list[str],
-    prompt_patterns: list[str],
-    textfsm_template: str,
-    output_regex: re.Pattern,
+    data: dict,
+    id: str,
+    filename: str,
 ):
-    for i, row in enumerate(
-        query_machines(
-            machines,
-            username,
-            password,
-            device_type,
-            groups,
-            cmds,
-            prompt_patterns,
-            textfsm_template,
-            output_regex,
-        )
-    ):
-        yield f"id:{i}\ndata:{json.dumps(row)}\n\n"
+    async def generator(req: Request):
+        event = stop[id] = Event()
 
-    yield f"event:finished\ndata:{gen_default_filename(cmds)}\n\n"
+        async for row in async_gen(query_machines(**data)):
+            if await req.is_disconnected() or event.is_set():
+                break
+
+            if isinstance(row["result"], Exception):
+                row["result"] = str(row["result"])
+
+            yield ServerSentEvent(data=json.dumps(row))
+
+        yield ServerSentEvent(
+            data=filename,
+            event="finished",
+        )
+
+        stop.pop(id, None)
+
+    return generator
 
 
 @app.get("/")
-def read_root(request: Request):
+async def read_root(req: Request):
     return templates.TemplateResponse(
-        request=request,
+        request=req,
         name="form.html",
         context={"device_types": sorted(SUPPORTED_DEVICE_TYPES)},
     )
 
 
-@app.get("/stream/{id}")
-async def stream(id: str):
-    try:
-        return StreamingResponse(cache.pop(id), media_type="text/event-stream")
-    except KeyError:
-        return HTTPException(404, "Not found")
-
-
 @app.get("/results/{id}")
-def results(request: Request, id: str):
-    # if id not in cache.keys():
-    #     return RedirectResponse("/")
-
+async def results(req: Request, id: str):
     return templates.TemplateResponse(
-        request=request,
+        request=req,
         name="results.html",
         context={},
     )
 
 
-# TODO: tabulator
 @app.post("/execute")
-def execute(
+async def execute(
     machines_files: Annotated[list[UploadFile], File()],
     groups: Annotated[str, Form()],
     device_type: Annotated[str, Form()],
@@ -102,6 +94,7 @@ def execute(
     output_regex: Annotated[str, Form()],
     # textfsm_template: Annotated[UploadFile | None, File()],
 ):
+    id = str(uuid4())
     parsed = {
         "username": username,
         "password": password,
@@ -132,8 +125,22 @@ def execute(
     except re.error as e:
         raise HTTPException(400, f"Invalid output regex {repr(e)}")
 
-    id = str(uuid4())
-    cache[id] = web_query(**parsed)
-    # cache[id] = event_gen()
+    cache[id] = web_query(parsed, id, gen_default_filename(parsed["cmds"]))
 
     return RedirectResponse(f"/results/{id}", 302)
+
+
+@app.get("/stream/{id}")
+async def stream(req: Request, id: str):
+    try:
+        return EventSourceResponse(cache.pop(id)(req))
+    except KeyError:
+        return HTTPException(404, "Not found")
+
+
+@app.delete("/stream/{id}")
+async def stopStream(id: str):
+    event = stop.get(id)
+    if event:
+        event.set()
+    return Response()

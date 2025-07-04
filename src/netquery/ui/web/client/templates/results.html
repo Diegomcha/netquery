@@ -42,6 +42,10 @@
   >
     <div class="progress-bar" id="progressBar" style="width: 0%">0%</div>
   </div>
+
+  <button type="button" class="btn btn-danger btn-sm" id="progressStop">
+    <i class="bi bi-stop-fill"></i>
+  </button>
 </div>
 
 <!-- Table -->
@@ -50,7 +54,7 @@
 <!-- Download -->
 <button
   type="button"
-  class="btn btn-primary col col-auto"
+  class="btn btn-primary"
   id="downloadBtn"
   data-bs-toggle="modal"
   data-bs-target="#downloadModal"
@@ -94,7 +98,7 @@
           />
         </div>
         <div class="modal-footer">
-          <button type="submit" class="btn btn-primary">
+          <button type="submit" class="btn btn-primary" data-bs-dismiss="modal">
             <i class="bi bi-download"></i>
             Download
           </button>

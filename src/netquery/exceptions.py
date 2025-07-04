@@ -1,13 +1,21 @@
 class NetqueryException(Exception): ...
 
 
-class NetqueryTimeoutException(NetqueryException): ...
+class NetqueryTimeoutException(NetqueryException):
+    def __str__(self) -> str:
+        return "exception"  # TODO: Change this
 
 
-class NetqueryUnknownDeviceTypeException(NetqueryException): ...
+class NetqueryUnknownDeviceTypeException(NetqueryException):
+    def __str__(self) -> str:
+        return "exception"  # TODO: Change this
 
 
-class NetqueryUnauthorizedException(NetqueryException): ...
+class NetqueryUnauthorizedException(NetqueryException):
+    def __str__(self) -> str:
+        return "exception"  # TODO: Change this
 
 
-class NetqueryNoMatchesException(NetqueryException): ...
+class NetqueryNoMatchesException(NetqueryException):
+    def __str__(self) -> str:
+        return "exception"  # TODO: Change this

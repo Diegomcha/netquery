@@ -2,8 +2,9 @@ import json
 import re
 from datetime import datetime, timezone
 from socket import getnameinfo
-from typing import IO, Any, Optional
+from typing import IO, Any, Generator, Optional
 
+from fastapi.concurrency import run_in_threadpool
 from netmiko.ssh_dispatcher import CLASS_MAPPER
 from pathvalidate import Platform, sanitize_filename
 
@@ -149,3 +150,14 @@ def gen_default_filename(
         f"{"+".join(cmds).replace(" ", "_") if len(cmds[0]) > 0 else "accessible"}__{datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_UTC")}.csv",
         platform=Platform.UNIVERSAL,
     )
+
+
+# async def run_generator_in_bg(generator: Callable[[], Generator]):
+
+
+async def async_gen(gen: Generator):
+    while True:
+        item = await run_in_threadpool(next, gen, None)
+        if item is None:
+            break
+        yield item
